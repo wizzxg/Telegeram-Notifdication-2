@@ -1,83 +1,78 @@
 import requests
 from bs4 import BeautifulSoup
 import time
+import threading
+import os
+from flask import Flask
 
-# --- YOUR SETTINGS ---
+# --- FLASK WEB SERVER SETUP ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "I am alive! The bot is running in the background."
+
+# --- YOUR BOT SETTINGS ---
 URL = "https://www.kisa.ge/donate/8y4nomx7jd"
 BOT_TOKEN = "8687584211:AAH3F6gYHEtkdZujkR818zlqd_8hDq_BXpc"
-CHANNEL_ID = "-1003900072136" # Removed the '#' for the Telegram API
+CHANNEL_ID = "-1003900072136" 
 HTML_CLASS = "text-[32px] font-medium text-default50" 
-
-# Keep track of the last amount we saw
-previous_amount = None
 
 def get_current_amount():
     try:
-        # 1. Download the webpage
         response = requests.get(URL)
-        
-        # 2. Read the HTML
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # 3. Find the specific <p> element holding the number
         element = soup.find('p', class_=HTML_CLASS) 
         
         if element:
-            # 4. Clean the text: remove the Lari symbol (₾), commas, newlines, and spaces
-            # (Your HTML image shows the number and symbol are split across multiple lines)
             raw_text = element.text
             clean_text = raw_text.replace('₾', '').replace(',', '').replace('\n', '').strip()
-            
-            # 5. Convert it to a number 
             return float(clean_text)
-        else:
-            print("Could not find the element on the page. The website might be using JavaScript to load this data.")
-            return None
-            
     except Exception as e:
         print(f"Error checking website: {e}")
-        return None
+    return None
 
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHANNEL_ID,
-        "text": message
-    }
+    data = {"chat_id": CHANNEL_ID, "text": message}
     try:
-        response = requests.post(url, data=data)
-        if response.status_code == 200:
-            print("Message sent to Telegram successfully!")
-        else:
-            print(f"Failed to send message. Telegram API response: {response.text}")
+        requests.post(url, data=data)
     except Exception as e:
         print(f"Error sending message: {e}")
 
 # --- MAIN BOT LOOP ---
-print("Bot is starting...")
-
-while True:
-    current_amount = get_current_amount()
+def run_bot():
+    print("Bot background thread is starting...")
+    previous_amount = None
     
-    if current_amount is not None:
-        # If this is the first time running, just save the current amount
-        if previous_amount is None:
-            previous_amount = current_amount
-            print(f"Initial amount recorded: {current_amount} GEL")
+    while True:
+        try:
+            current_amount = get_current_amount()
             
-        # If the new amount is higher than the old amount
-        elif current_amount > previous_amount:
-            difference = current_amount - previous_amount
+            if current_amount is not None:
+                if previous_amount is None:
+                    previous_amount = current_amount
+                    print(f"Initial amount recorded: {current_amount} GEL")
+                elif current_amount > previous_amount:
+                    difference = current_amount - previous_amount
+                    message = f"თქვენი პროდუქტი გაიყიდა +{difference} GEL"
+                    send_telegram_message(message)
+                    print(f"Update: {current_amount} GEL. Message sent.")
+                    previous_amount = current_amount
+                else:
+                    print(f"Checked site. Unchanged: {current_amount} GEL.")
+        except Exception as e:
+            print(f"Error in bot loop: {e}")
             
-            # Create the Georgian message
-            message = f"თქვენი პროდუქტი გაიყიდა +{difference} GEL"
-            
-            # Send the message and update the previous amount
-            send_telegram_message(message)
-            print(f"Update detected! New total is {current_amount} GEL. Message sent.")
-            previous_amount = current_amount
-        else:
-            print(f"Checked site. Amount unchanged: {current_amount} GEL.")
-            
-    # Wait for 60 seconds before checking the website again
-    time.sleep(60)
+        time.sleep(60) 
+
+# --- START THE BACKGROUND THREAD GLOBALLY ---
+# Placing it here forces Render's Gunicorn server to run it
+bot_thread = threading.Thread(target=run_bot)
+bot_thread.daemon = True 
+bot_thread.start()
+
+# --- START THE WEB SERVER ---
+if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
