@@ -15,12 +15,22 @@ def home():
 # --- YOUR BOT SETTINGS ---
 URL = "https://www.kisa.ge/donate/8y4nomx7jd"
 BOT_TOKEN = "8687584211:AAH3F6gYHEtkdZujkR818zlqd_8hDq_BXpc"
-CHANNEL_ID = "-1003900072136" 
+CHANNEL_ID = "-5148905806" # Your new Channel/Group ID
 HTML_CLASS = "text-[32px] font-medium text-default50" 
 
 def get_current_amount():
     try:
-        response = requests.get(URL)
+        # Disguise the bot as a real Google Chrome browser
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        }
+        
+        # CACHE BUSTER: Add the exact time to the URL so the server gives us live data
+        cache_busting_url = f"{URL}?t={int(time.time())}"
+        
+        response = requests.get(cache_busting_url, headers=headers)
         soup = BeautifulSoup(response.text, 'html.parser')
         element = soup.find('p', class_=HTML_CLASS) 
         
@@ -28,6 +38,9 @@ def get_current_amount():
             raw_text = element.text
             clean_text = raw_text.replace('₾', '').replace(',', '').replace('\n', '').strip()
             return float(clean_text)
+        else:
+            print("Element not found. The site might be blocking us or loading via JS.")
+            return None
     except Exception as e:
         print(f"Error checking website: {e}")
     return None
@@ -64,10 +77,11 @@ def run_bot():
         except Exception as e:
             print(f"Error in bot loop: {e}")
             
+        # Wait 60 seconds before checking again
         time.sleep(60) 
 
 # --- START THE BACKGROUND THREAD GLOBALLY ---
-# Placing it here forces Render's Gunicorn server to run it
+# Placing it here forces Render's Gunicorn server to run it immediately
 bot_thread = threading.Thread(target=run_bot)
 bot_thread.daemon = True 
 bot_thread.start()
