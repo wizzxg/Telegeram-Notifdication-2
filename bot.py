@@ -1,4 +1,4 @@
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 import time
 import threading
@@ -15,22 +15,25 @@ def home():
 # --- YOUR BOT SETTINGS ---
 URL = "https://www.kisa.ge/donate/8y4nomx7jd"
 BOT_TOKEN = "8687584211:AAH3F6gYHEtkdZujkR818zlqd_8hDq_BXpc"
-CHANNEL_ID = "-5148905806" # Your new Channel/Group ID
+CHANNEL_ID = "-5148905806" 
 HTML_CLASS = "text-[32px] font-medium text-default50" 
+
+# --- CLOUDFLARE BYPASS ENGINE ---
+# This creates a scraper that acts exactly like Google Chrome on Windows
+scraper = cloudscraper.create_scraper(browser={
+    'browser': 'chrome',
+    'platform': 'windows',
+    'desktop': True
+})
 
 def get_current_amount():
     try:
-        # Disguise the bot as a real Google Chrome browser
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-        }
-        
         # CACHE BUSTER: Add the exact time to the URL so the server gives us live data
         cache_busting_url = f"{URL}?t={int(time.time())}"
         
-        response = requests.get(cache_busting_url, headers=headers)
+        # We use 'scraper.get' instead of 'requests.get' to bypass security
+        response = scraper.get(cache_busting_url)
+        
         soup = BeautifulSoup(response.text, 'html.parser')
         element = soup.find('p', class_=HTML_CLASS) 
         
@@ -39,7 +42,9 @@ def get_current_amount():
             clean_text = raw_text.replace('₾', '').replace(',', '').replace('\n', '').strip()
             return float(clean_text)
         else:
-            print("Element not found. The site might be blocking us or loading via JS.")
+            print(f"Element not found! Server returned Status Code: {response.status_code}")
+            # If it fails, print the first 200 characters of what Render actually saw to help us debug
+            print(f"What Render saw: {response.text[:200]}")
             return None
     except Exception as e:
         print(f"Error checking website: {e}")
@@ -49,7 +54,7 @@ def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {"chat_id": CHANNEL_ID, "text": message}
     try:
-        requests.post(url, data=data)
+        scraper.post(url, data=data)
     except Exception as e:
         print(f"Error sending message: {e}")
 
