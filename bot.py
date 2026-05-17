@@ -1,4 +1,4 @@
-import cloudscraper
+from curl_cffi import requests
 from bs4 import BeautifulSoup
 import time
 import threading
@@ -18,21 +18,13 @@ BOT_TOKEN = "8687584211:AAH3F6gYHEtkdZujkR818zlqd_8hDq_BXpc"
 CHANNEL_ID = "-5148905806" 
 HTML_CLASS = "text-[32px] font-medium text-default50" 
 
-# --- CLOUDFLARE BYPASS ENGINE ---
-# This creates a scraper that acts exactly like Google Chrome on Windows
-scraper = cloudscraper.create_scraper(browser={
-    'browser': 'chrome',
-    'platform': 'windows',
-    'desktop': True
-})
-
 def get_current_amount():
     try:
-        # CACHE BUSTER: Add the exact time to the URL so the server gives us live data
+        # Cache buster to ensure live data
         cache_busting_url = f"{URL}?t={int(time.time())}"
         
-        # We use 'scraper.get' instead of 'requests.get' to bypass security
-        response = scraper.get(cache_busting_url)
+        # This is the magic line. It perfectly impersonates a real Chrome browser's security fingerprint.
+        response = requests.get(cache_busting_url, impersonate="chrome110")
         
         soup = BeautifulSoup(response.text, 'html.parser')
         element = soup.find('p', class_=HTML_CLASS) 
@@ -42,10 +34,9 @@ def get_current_amount():
             clean_text = raw_text.replace('₾', '').replace(',', '').replace('\n', '').strip()
             return float(clean_text)
         else:
-            print(f"Element not found! Server returned Status Code: {response.status_code}")
-            # If it fails, print the first 200 characters of what Render actually saw to help us debug
-            print(f"What Render saw: {response.text[:200]}")
+            print(f"Element missing. Render saw this: {response.text[:150]}")
             return None
+            
     except Exception as e:
         print(f"Error checking website: {e}")
     return None
@@ -54,7 +45,8 @@ def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {"chat_id": CHANNEL_ID, "text": message}
     try:
-        scraper.post(url, data=data)
+        # We can use the same impersonation to talk to Telegram securely
+        requests.post(url, data=data, impersonate="chrome110")
     except Exception as e:
         print(f"Error sending message: {e}")
 
@@ -82,11 +74,10 @@ def run_bot():
         except Exception as e:
             print(f"Error in bot loop: {e}")
             
-        # Wait 60 seconds before checking again
+        # Back to your preferred 60 seconds!
         time.sleep(60) 
 
 # --- START THE BACKGROUND THREAD GLOBALLY ---
-# Placing it here forces Render's Gunicorn server to run it immediately
 bot_thread = threading.Thread(target=run_bot)
 bot_thread.daemon = True 
 bot_thread.start()
